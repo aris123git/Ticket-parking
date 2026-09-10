@@ -408,7 +408,7 @@ function upsertTariff(id: string | null, body: Record<string, unknown>, user: Au
   }
   const name = String(body.name || "").trim();
   const durationValue = Number(body.durationValue ?? body.duration_value);
-  const durationUnit = String(body.durationUnit ?? body.duration_unit || "HOURS").toUpperCase();
+  const durationUnit = String(body.durationUnit ?? body.duration_unit ?? "HOURS").toUpperCase();
   const priceFcfa = Number(body.priceFcfa ?? body.price_fcfa);
   const isActive = body.isActive === false || body.is_active === 0 ? 0 : 1;
   const reason = body.reason ? String(body.reason) : null;

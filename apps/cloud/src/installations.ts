@@ -3,6 +3,12 @@ import { nowIso, periodRange, type PeriodFilter } from "@parkflow/shared";
 import { getDb } from "./db.js";
 import { hashApiKey } from "./seed.js";
 
+export function publicInstallation(row: Record<string, unknown>) {
+  const copy = { ...row };
+  delete copy.api_key_hash;
+  return copy;
+}
+
 export function authenticateInstallation(publicId: string, apiKey: string) {
   const db = getDb();
   const inst = db.prepare("SELECT * FROM installations WHERE public_id = ?").get(publicId) as Record<string, unknown> | undefined;

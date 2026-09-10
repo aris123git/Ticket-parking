@@ -12,6 +12,7 @@ import {
   getOwnedInstallation,
   ingestSync,
   ownerInstallations,
+  publicInstallation,
   statsForInstallations,
   upsertInstallation,
 } from "./installations.js";
@@ -141,7 +142,7 @@ export function createCloudApp() {
   app.post("/api/parkings/claim", ownerRequired, (req: OwnerRequest, res) => {
     try {
       const inst = claimInstallation(req.owner!.id, String(req.body?.pairingCode || ""));
-      res.json({ parking: inst });
+      res.json({ parking: publicInstallation(inst as Record<string, unknown>) });
     } catch (err) {
       const status = (err as { status?: number }).status || 500;
       res.status(status).json({ error: err instanceof Error ? err.message : "Association impossible" });
@@ -164,7 +165,7 @@ export function createCloudApp() {
     const closures = getDb()
       .prepare("SELECT * FROM cash_closures WHERE installation_id = ? ORDER BY closed_at DESC LIMIT 50")
       .all(inst.id);
-    res.json({ parking: inst, stats, tariffs, cashiers, audit, closures });
+    res.json({ parking: publicInstallation(inst), stats, tariffs, cashiers, audit, closures });
   });
 
   return app;
