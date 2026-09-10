@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+data/
+apps/local/data/
+apps/cloud/data/
+apps/local/client/dist/
+apps/cloud/client/dist/
+*.log
+.DS_Store
+coverage/
+.vite/

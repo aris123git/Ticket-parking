@@ -1,0 +1,14 @@
+services:
+  cloud:
+    build:
+      context: .
+      dockerfile: apps/cloud/Dockerfile
+    ports:
+      - "3200:3200"
+    environment:
+      CLOUD_PORT: 3200
+      CLOUD_JWT_SECRET: change-me-in-production
+    volumes:
+      - cloud-data:/app/apps/cloud/data
+volumes:
+  cloud-data:

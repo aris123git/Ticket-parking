@@ -1,0 +1,41 @@
+{
+  "name": "@parkflow/cloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n api,ui -c cyan,blue \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev:api": "tsx watch src/index.ts",
+    "dev:ui": "vite --config client/vite.config.ts",
+    "build": "vite build --config client/vite.config.ts",
+    "start": "tsx src/index.ts",
+    "test": "tsx --test src/isolation.test.ts"
+  },
+  "dependencies": {
+    "@parkflow/shared": "*",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^11.9.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2"
+  }
+}

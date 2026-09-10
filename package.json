@@ -1,0 +1,26 @@
+{
+  "name": "parkflow",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Logiciel local de gestion de parking et site de supervision a distance",
+  "workspaces": [
+    "packages/shared",
+    "apps/local",
+    "apps/cloud"
+  ],
+  "scripts": {
+    "dev": "concurrently -n cloud,local -c cyan,yellow \"npm run dev -w apps/cloud\" \"npm run dev -w apps/local\"",
+    "dev:local": "npm run dev -w apps/local",
+    "dev:cloud": "npm run dev -w apps/cloud",
+    "build": "npm run build -w packages/shared && npm run build -w apps/local && npm run build -w apps/cloud",
+    "test": "npm test -w packages/shared && npm test -w apps/local && npm test -w apps/cloud",
+    "start:local": "npm run start -w apps/local",
+    "start:cloud": "npm run start -w apps/cloud"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
