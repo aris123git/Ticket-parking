@@ -1,6 +1,11 @@
-# ParkFlow — Gestion de parking + supervision web
+# ParkFlow — Caisse parking (logiciel Windows) + supervision web
 
-Logiciel **local autonome** pour vendre et imprimer des tickets de parking, plus un **site de supervision** pour le propriétaire.
+ParkFlow est un **logiciel de caisse**, comme une gestion commerciale ou une caisse de maquis : il s’installe sur l’ordinateur du parking, s’ouvre par un raccourci bureau, et continue de vendre même sans Internet.
+
+Ce n’est pas un site web à ouvrir dans Chrome pour encaisser.
+
+- **ParkFlow Caisse** = application Windows (`.exe`) installée dans chaque parking
+- **ParkFlow Supervision** = site web du propriétaire, pour consulter les parkings à distance
 
 Internet n’est jamais requis pour encaisser. La connexion sert uniquement à synchroniser les données vers le serveur central.
 
@@ -28,7 +33,30 @@ LOGICIEL PARKING (caisse locale)
 
 Chaque installation génère un identifiant long (`park_` + 48 hex) et une clé API. Le serveur n’accepte une synchro que si **l’identifiant et la clé** correspondent. Un propriétaire ne voit que les parkings qu’il a associés via un code d’appariement.
 
-## Démarrage local
+## Créer le fichier .exe (Windows)
+
+Deux façons :
+
+### 1. Un clic sur GitHub (recommandé)
+
+1. Ouvrir le dépôt → onglet **Actions**
+2. Choisir **Build Windows EXE**
+3. Cliquer **Run workflow**
+4. Télécharger l’artifact `ParkFlow-Caisse-Windows`
+5. Installer `ParkFlow Caisse-1.0.0-win.exe` sur l’ordinateur de caisse (raccourci bureau)
+
+### 2. Sur un PC Windows
+
+Double-cliquer sur `creer-exe-windows.bat` (Node.js LTS doit être installé : https://nodejs.org/).
+
+Les `.exe` apparaissent dans `apps/local/release/` :
+
+- **ParkFlow Caisse-1.0.0-win.exe** — installateur (raccourci menu Démarrer + bureau)
+- **ParkFlow-Caisse-Portable.exe** — version sans installation
+
+Les ventes sont enregistrées dans `%APPDATA%\ParkFlow Caisse\` : désinstaller le logiciel ne doit pas effacer l’historique.
+
+## Démarrage en mode développement
 
 ```bash
 npm install

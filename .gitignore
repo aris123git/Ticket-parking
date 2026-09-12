@@ -15,3 +15,6 @@ apps/cloud/client/dist/
 .DS_Store
 coverage/
 .vite/
+apps/local/release/
+apps/local/dist-server/
+apps/local/client/dist/

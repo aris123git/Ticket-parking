@@ -34,7 +34,7 @@ export default function Login({ onLogin }: { onLogin: (u: User, parkingName: str
       <form className="login-card" onSubmit={submit}>
         <div className="brand">PARKFLOW</div>
         <h1>Caisse parking</h1>
-        <p>Logiciel local — fonctionne sans Internet</p>
+        <p>Logiciel de caisse installé sur cet ordinateur — fonctionne sans Internet</p>
         {error ? <div className="error">{error}</div> : null}
         <div className="field">
           <label>Identifiant</label>

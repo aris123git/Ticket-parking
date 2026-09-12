@@ -3,12 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
+  "author": "ParkFlow",
+  "description": "Logiciel de caisse parking — vente et impression de tickets",
   "scripts": {
     "dev": "concurrently -n api,ui -c green,magenta \"npm run dev:api\" \"npm run dev:ui\"",
     "dev:api": "tsx watch src/index.ts",
     "dev:ui": "vite --config client/vite.config.ts",
     "build": "vite build --config client/vite.config.ts",
+    "build:desktop": "npm run build && node scripts/build-desktop.mjs",
     "start": "tsx src/index.ts",
+    "desktop": "npm run build:desktop && electron .",
+    "dist:win": "npm run build:desktop && electron-builder --win nsis portable",
     "test": "tsx --test src/sales.test.ts"
   },
   "dependencies": {
@@ -31,11 +37,69 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.4.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vite": "^6.2.2"
+  },
+  "build": {
+    "appId": "bf.parkflow.caisse",
+    "productName": "ParkFlow Caisse",
+    "copyright": "ParkFlow",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "electron/icons"
+    },
+    "files": [
+      "electron/**",
+      "dist-server/**",
+      "client/dist/**",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "win": {
+      "icon": "electron/icons/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${os}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ParkFlow Caisse",
+      "uninstallDisplayName": "ParkFlow Caisse",
+      "installerLanguages": [
+        "fr_FR"
+      ]
+    },
+    "portable": {
+      "artifactName": "ParkFlow-Caisse-Portable.exe"
+    }
   }
 }

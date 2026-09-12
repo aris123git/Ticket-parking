@@ -15,7 +15,9 @@
     "build": "npm run build -w packages/shared && npm run build -w apps/local && npm run build -w apps/cloud",
     "test": "npm test -w packages/shared && npm test -w apps/local && npm test -w apps/cloud",
     "start:local": "npm run start -w apps/local",
-    "start:cloud": "npm run start -w apps/cloud"
+    "start:cloud": "npm run start -w apps/cloud",
+    "desktop": "npm run desktop -w apps/local",
+    "dist:win": "npm run dist:win -w apps/local"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
