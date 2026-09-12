@@ -15,7 +15,7 @@
     "start": "tsx src/index.ts",
     "desktop": "npm run build:desktop && electron .",
     "dist:win": "npm run build:desktop && electron-builder --win nsis portable",
-    "test": "tsx --test src/sales.test.ts"
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@parkflow/shared": "*",

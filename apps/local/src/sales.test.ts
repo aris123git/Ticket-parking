@@ -79,3 +79,41 @@ test("cancel and refund keep the original sale row", () => {
   assert.equal(audit.n, 1);
   closeDb();
 });
+
+test("cash payment stores change; mobile money is exact", () => {
+  seedMemory();
+  const cash = createSale("tariff-24", cashier, { method: "CASH", amountReceived: 2000 });
+  assert.equal(cash.payment_method, "CASH");
+  assert.equal(cash.amount_received, 2000);
+  assert.equal(cash.change_fcfa, 1000);
+  const om = createSale("tariff-24", cashier, { method: "ORANGE_MONEY", amountReceived: 9999 });
+  assert.equal(om.payment_method, "ORANGE_MONEY");
+  assert.equal(om.amount_received, 1000);
+  assert.equal(om.change_fcfa, 0);
+  assert.throws(() => createSale("tariff-24", cashier, { method: "CASH", amountReceived: 200 }));
+  closeDb();
+});
+
+test("zip backup of the local database can be restored", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parkflow-bak-"));
+  process.env.LOCAL_DATA_DIR = dir;
+  seedMemory();
+  createSale("tariff-24", cashier, { method: "CASH", amountReceived: 2000 });
+  const { createBackup, restoreFromZip } = await import("./backup.js");
+  const backup = await createBackup(admin);
+  assert.ok(fs.existsSync(backup.path));
+  createSale("tariff-24", cashier);
+  restoreFromZip(fs.readFileSync(backup.path), admin);
+  const n = getDb().prepare("SELECT COUNT(*) AS n FROM sales").get() as { n: number };
+  assert.equal(n.n, 1);
+  const row = getDb().prepare("SELECT payment_method, change_fcfa FROM sales").get() as {
+    payment_method: string;
+    change_fcfa: number;
+  };
+  assert.equal(row.payment_method, "CASH");
+  assert.equal(row.change_fcfa, 1000);
+  closeDb();
+});

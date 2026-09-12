@@ -80,13 +80,18 @@ Pour associer le logiciel local au compte propriétaire : écran **Synchronisati
 
 Cibles supportées (réglables par l’administrateur) :
 
-- **preview** — aperçu + fichier `apps/local/data/last-ticket.txt` (défaut, sans imprimante)
+- **preview** — aperçu + fichier `last-ticket.txt` (défaut, sans imprimante)
 - **network** — imprimante ESC/POS en TCP (port 9100)
 - **file** — périphérique (`/dev/usb/lp0`, fichier raw Windows, etc.)
+- **windows** — imprimante installée sur le PC, par son nom (comme en gestion commerciale)
 
 Largeurs 58 mm (32 colonnes) et 80 mm (48 colonnes). Les accents sont convertis en ASCII avant envoi. Pas de QR code.
 
+La caisse fonctionne comme une gestion commerciale : tarif → paiement (espèces / Orange Money / Moov Money / carte) → ticket. Réimpression du dernier ticket, rapport Z imprimable, sauvegarde ZIP de la base SQLite.
+
 Numérotation des tickets : `YYYYMM-000001` (compteur mensuel, transaction SQLite, pas de doublon hors ligne).
+
+Au premier lancement, un assistant demande le nom du parking et impose de changer le mot de passe administrateur (`admin123` n’est plus accepté ensuite).
 
 ## Déploiement cloud (supervision)
 

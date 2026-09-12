@@ -188,6 +188,62 @@ th { color: var(--muted); font-weight: 600; }
 }
 .status-SOLD { color: var(--green); font-weight: 700; }
 .status-CANCELLED, .status-REFUNDED { color: var(--gold); font-weight: 700; }
+
+.pay-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 20, .82);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  padding: 16px;
+}
+.pay-card {
+  width: min(720px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 22px;
+  box-shadow: 0 20px 80px rgba(0,0,0,.45);
+}
+.pay-amount {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--gold);
+  margin: 0 0 16px;
+}
+.pay-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.pay-method {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  background: #203154;
+  color: var(--text);
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 800;
+}
+.pay-method.cash { background: linear-gradient(180deg, #2a5a3a, #163828); color: var(--green); }
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.keypad button {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  background: #0f1830;
+  color: var(--text);
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
 @media (max-width: 860px) {
   .admin { grid-template-columns: 1fr; }
   .side { flex-direction: row; overflow: auto; }

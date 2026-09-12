@@ -70,13 +70,23 @@ test("sync is idempotent and keeps sale price snapshots", () => {
     cashier_name: "Aminata",
     status: "SOLD",
     sold_at: nowIso(),
+    payment_method: "ORANGE_MONEY",
+    amount_received: 1000,
+    change_fcfa: 0,
   };
   ingestSync(inst, { sales: [sale] });
   ingestSync(inst, { sales: [{ ...sale, status: "CANCELLED", cancel_reason: "erreur", cancelled_by_name: "Admin" }] });
-  const rows = getDb().prepare("SELECT * FROM sales WHERE installation_id = ?").all(inst.id) as { price_fcfa: number; status: string }[];
+  const rows = getDb().prepare("SELECT * FROM sales WHERE installation_id = ?").all(inst.id) as {
+    price_fcfa: number;
+    status: string;
+    payment_method: string;
+    change_fcfa: number;
+  }[];
   assert.equal(rows.length, 1);
   assert.equal(rows[0].price_fcfa, 1000);
   assert.equal(rows[0].status, "CANCELLED");
+  assert.equal(rows[0].payment_method, "ORANGE_MONEY");
+  assert.equal(rows[0].change_fcfa, 0);
   closeDb();
 });
 

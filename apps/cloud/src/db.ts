@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { migrateCloudSchema } from "./migrate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.CLOUD_DATA_DIR
@@ -19,6 +20,7 @@ export function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   db.exec(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
+  migrateCloudSchema(db);
   return db;
 }
 
@@ -31,5 +33,6 @@ export function openMemoryDb(): Database.Database {
   db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
   db.exec(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
+  migrateCloudSchema(db);
   return db;
 }

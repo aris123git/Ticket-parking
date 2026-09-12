@@ -1,11 +1,16 @@
 import crypto from "node:crypto";
-import { nowIso, periodFromDate, DEFAULT_TIMEZONE } from "@parkflow/shared";
+import { nowIso, periodFromDate, settlePayment, DEFAULT_TIMEZONE } from "@parkflow/shared";
 import { getDb } from "./db.js";
 import { writeAudit } from "./audit.js";
-import { printTicket } from "./printer.js";
+import { printTicket, saleFromRow } from "./printer.js";
 import type { AuthUser } from "./seed.js";
 
 export type SaleRow = Record<string, unknown>;
+
+export type SalePaymentInput = {
+  method?: unknown;
+  amountReceived?: unknown;
+};
 
 export function nextTicketNumber(soldAt = new Date(), timeZone = DEFAULT_TIMEZONE): { period: string; sequence: number; ticketNumber: string } {
   const db = getDb();
@@ -23,7 +28,7 @@ export function nextTicketNumber(soldAt = new Date(), timeZone = DEFAULT_TIMEZON
   return { period, sequence, ticketNumber };
 }
 
-export function createSale(tariffId: string, user: AuthUser) {
+export function createSale(tariffId: string, user: AuthUser, payment: SalePaymentInput = {}) {
   const db = getDb();
   return db.transaction(() => {
     const tariff = db
@@ -33,6 +38,8 @@ export function createSale(tariffId: string, user: AuthUser) {
       throw Object.assign(new Error("Tarif introuvable ou inactif"), { status: 400 });
     }
 
+    const priceFcfa = Number(tariff.price_fcfa);
+    const settled = settlePayment(priceFcfa, payment.method, payment.amountReceived);
     const soldAt = new Date();
     const numbering = nextTicketNumber(soldAt);
     const id = crypto.randomUUID();
@@ -41,9 +48,9 @@ export function createSale(tariffId: string, user: AuthUser) {
     db.prepare(
       `INSERT INTO sales (
         id, ticket_number, period, sequence, tariff_id, tariff_ref, tariff_name,
-        duration_value, duration_unit, price_fcfa, cashier_id, cashier_name,
-        status, sold_at, print_status, sync_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SOLD', ?, 'PENDING', 'PENDING')`,
+        duration_value, duration_unit, price_fcfa, payment_method, amount_received, change_fcfa,
+        cashier_id, cashier_name, status, sold_at, print_status, sync_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SOLD', ?, 'PENDING', 'PENDING')`,
     ).run(
       id,
       numbering.ticketNumber,
@@ -54,7 +61,10 @@ export function createSale(tariffId: string, user: AuthUser) {
       tariff.name,
       tariff.duration_value,
       tariff.duration_unit,
-      tariff.price_fcfa,
+      priceFcfa,
+      settled.paymentMethod,
+      settled.amountReceived,
+      settled.changeFcfa,
       user.id,
       user.displayName,
       soldAtIso,
@@ -68,7 +78,10 @@ export function createSale(tariffId: string, user: AuthUser) {
       newValue: {
         ticketNumber: numbering.ticketNumber,
         tariffRef: tariff.reference,
-        priceFcfa: tariff.price_fcfa,
+        priceFcfa,
+        paymentMethod: settled.paymentMethod,
+        amountReceived: settled.amountReceived,
+        changeFcfa: settled.changeFcfa,
       },
     });
 
@@ -76,18 +89,9 @@ export function createSale(tariffId: string, user: AuthUser) {
   })();
 }
 
-export async function createSaleAndPrint(tariffId: string, user: AuthUser) {
-  const sale = createSale(tariffId, user);
-  const printed = await printTicket({
-    tariff_ref: String(sale.tariff_ref),
-    tariff_name: String(sale.tariff_name),
-    duration_value: Number(sale.duration_value),
-    duration_unit: sale.duration_unit as "HOURS" | "WEEKS",
-    price_fcfa: Number(sale.price_fcfa),
-    ticket_number: String(sale.ticket_number),
-    sold_at: String(sale.sold_at),
-    cashier_name: String(sale.cashier_name),
-  });
+export async function createSaleAndPrint(tariffId: string, user: AuthUser, payment: SalePaymentInput = {}) {
+  const sale = createSale(tariffId, user, payment);
+  const printed = await printTicket(saleFromRow(sale));
 
   getDb()
     .prepare("UPDATE sales SET print_status = ?, printed_at = ?, print_error = ? WHERE id = ?")
@@ -97,6 +101,10 @@ export async function createSaleAndPrint(tariffId: string, user: AuthUser) {
     sale: getDb().prepare("SELECT * FROM sales WHERE id = ?").get(sale.id),
     print: printed,
   };
+}
+
+export function lastSale(): SaleRow | undefined {
+  return getDb().prepare("SELECT * FROM sales ORDER BY sold_at DESC, sequence DESC LIMIT 1").get() as SaleRow | undefined;
 }
 
 export function changeSaleStatus(

@@ -22,6 +22,21 @@ export function durationLabel(value: number, unit: string): string {
   return value === 1 ? "1 heure" : `${value} heures`;
 }
 
+export function paymentLabel(method: string): string {
+  switch (method) {
+    case "CASH":
+      return "Especes";
+    case "ORANGE_MONEY":
+      return "Orange Money";
+    case "MOOV_MONEY":
+      return "Moov Money";
+    case "CARD":
+      return "Carte";
+    default:
+      return method;
+  }
+}
+
 export function formatWhen(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });

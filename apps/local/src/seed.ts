@@ -85,6 +85,7 @@ export function seedIfNeeded(): void {
   setSetting("printer_host", "127.0.0.1");
   setSetting("printer_port", "9100");
   setSetting("printer_path", "");
+  setSetting("printer_name", "");
   setSetting("printer_alignment", "center");
   setSetting("printer_font_size", "1");
   setSetting("printer_show_address", "1");
@@ -123,4 +124,57 @@ export function mapUser(row: Record<string, unknown>): AuthUser {
     role: row.role as AuthUser["role"],
     isActive: Boolean(row.is_active),
   };
+}
+
+export function setupNeeded(): boolean {
+  if (getSetting("setup_done") === "1") return false;
+  const sales = (getDb().prepare("SELECT COUNT(*) AS n FROM sales").get() as { n: number }).n;
+  if (sales > 0) {
+    setSetting("setup_done", "1");
+    return false;
+  }
+  return true;
+}
+
+export function completeSetup(body: Record<string, unknown>): { parkingName: string } {
+  if (!setupNeeded()) {
+    throw Object.assign(new Error("L'installation est deja configuree"), { status: 409 });
+  }
+  const parkingName = String(body.parkingName || "").trim();
+  const parkingAddress = String(body.parkingAddress || "").trim();
+  const parkingPhone = String(body.parkingPhone || "").trim();
+  const adminPassword = String(body.adminPassword || "");
+  const cashierPassword = body.cashierPassword ? String(body.cashierPassword) : "";
+  if (parkingName.length < 2) {
+    throw Object.assign(new Error("Nom du parking obligatoire"), { status: 400 });
+  }
+  if (adminPassword.length < 6) {
+    throw Object.assign(new Error("Mot de passe administrateur trop court (6 caracteres min.)"), { status: 400 });
+  }
+  if (adminPassword === "admin123") {
+    throw Object.assign(new Error("Choisissez un mot de passe different du mot de passe initial"), { status: 400 });
+  }
+  if (cashierPassword && cashierPassword.length < 6) {
+    throw Object.assign(new Error("Mot de passe caissier trop court (6 caracteres min.)"), { status: 400 });
+  }
+  if (cashierPassword === "caissier123") {
+    throw Object.assign(new Error("Choisissez un mot de passe caissier different du mot de passe initial"), { status: 400 });
+  }
+
+  setSetting("parking_name", parkingName);
+  setSetting("parking_address", parkingAddress);
+  setSetting("parking_phone", parkingPhone);
+  const db = getDb();
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE username = 'admin'").run(
+    bcrypt.hashSync(adminPassword, 10),
+    nowIso(),
+  );
+  if (cashierPassword) {
+    db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE username = 'caissier'").run(
+      bcrypt.hashSync(cashierPassword, 10),
+      nowIso(),
+    );
+  }
+  setSetting("setup_done", "1");
+  return { parkingName };
 }

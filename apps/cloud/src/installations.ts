@@ -78,9 +78,9 @@ export function ingestSync(installation: Record<string, unknown>, body: any) {
   const upsertSale = db.prepare(
     `INSERT INTO sales (
       id, installation_id, local_id, ticket_number, tariff_ref, tariff_name, duration_value, duration_unit,
-      price_fcfa, cashier_id, cashier_name, status, sold_at, cancelled_at, cancelled_by_name, cancel_reason,
-      refunded_at, refunded_by_name, refund_reason, received_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      price_fcfa, payment_method, amount_received, change_fcfa, cashier_id, cashier_name, status, sold_at,
+      cancelled_at, cancelled_by_name, cancel_reason, refunded_at, refunded_by_name, refund_reason, received_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(installation_id, local_id) DO UPDATE SET
       status = excluded.status,
       cancelled_at = excluded.cancelled_at,
@@ -103,6 +103,9 @@ export function ingestSync(installation: Record<string, unknown>, body: any) {
         s.duration_value,
         s.duration_unit,
         s.price_fcfa,
+        s.payment_method || "CASH",
+        s.amount_received ?? s.price_fcfa,
+        s.change_fcfa || 0,
         s.cashier_id,
         s.cashier_name,
         s.status,

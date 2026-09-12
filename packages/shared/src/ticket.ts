@@ -1,6 +1,7 @@
 import { toPrinterAscii } from "./accents.js";
-import { formatDate, formatTime } from "./dates.js";
+import { formatDate, formatDateTime, formatTime } from "./dates.js";
 import { formatFcfa } from "./money.js";
+import { paymentLabel } from "./payment.js";
 import { durationLabelAscii } from "./validation.js";
 
 export type PaperWidth = 58 | 80;
@@ -19,11 +20,30 @@ export type TicketPrintData = {
   ticketNumber: string;
   soldAt: string;
   cashierName?: string;
+  paymentMethod?: string;
+  amountReceived?: number;
+  changeFcfa?: number;
+  duplicate?: boolean;
   showAddress?: boolean;
   showPhone?: boolean;
   showCashier?: boolean;
   showHeader?: boolean;
   showFooter?: boolean;
+};
+
+export type ZReportData = {
+  parkingName: string;
+  closedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  ticketsCount: number;
+  theoreticalAmount: number;
+  declaredAmount: number;
+  difference: number;
+  cashierName: string;
+  closedByName: string;
+  notes?: string;
+  byPayment: { method: string; count: number; amount: number }[];
 };
 
 export function paperChars(width: PaperWidth): number {
@@ -83,10 +103,18 @@ export function renderTicketText(data: TicketPrintData, width: PaperWidth = 80):
   }
   lines.push(lineSep(w));
   pushCenter("TICKET PARKING");
+  if (data.duplicate) pushCenter("DUPLICATA");
   lines.push("");
   pushLeft(`Ref : ${data.tariffRef}`);
   pushLeft(`Duree : ${durationLabelAscii(data.durationValue, data.durationUnit)}`);
   pushLeft(`Prix : ${formatFcfa(data.priceFcfa)}`);
+  if (data.paymentMethod) {
+    pushLeft(`Paiement : ${paymentLabel(data.paymentMethod)}`);
+    if (data.paymentMethod === "CASH" && data.amountReceived != null) {
+      pushLeft(`Recu : ${formatFcfa(data.amountReceived)}`);
+      pushLeft(`Monnaie : ${formatFcfa(data.changeFcfa ?? 0)}`);
+    }
+  }
   lines.push("");
   pushLeft(`Ticket N : ${data.ticketNumber}`);
   lines.push("");
@@ -120,4 +148,50 @@ export function encodeEscPos(text: string, options?: { cut?: boolean; alignCente
     chunks.push(GS, 0x56, 0x00);
   }
   return Buffer.from(chunks);
+}
+
+export function renderZReportText(data: ZReportData, width: PaperWidth = 80): string {
+  const w = paperChars(width);
+  const lines: string[] = [];
+  const pushCenter = (text: string) => {
+    for (const l of wrapLine(toPrinterAscii(text), w)) {
+      lines.push(padCenter(l, w));
+    }
+  };
+  const pushLeft = (text: string) => {
+    for (const l of wrapLine(toPrinterAscii(text), w)) {
+      lines.push(l);
+    }
+  };
+
+  lines.push("");
+  pushCenter(data.parkingName.toUpperCase());
+  lines.push(lineSep(w));
+  pushCenter("Z DE CAISSE");
+  lines.push(lineSep(w));
+  pushLeft(`Cloture : ${formatDateTime(data.closedAt)}`);
+  pushLeft(`Debut : ${formatDateTime(data.periodStart)}`);
+  pushLeft(`Fin : ${formatDateTime(data.periodEnd)}`);
+  pushLeft(`Caissier : ${toPrinterAscii(data.cashierName)}`);
+  pushLeft(`Par : ${toPrinterAscii(data.closedByName)}`);
+  lines.push(lineSep(w));
+  pushLeft(`Tickets : ${data.ticketsCount}`);
+  pushLeft(`Theorique : ${formatFcfa(data.theoreticalAmount)}`);
+  pushLeft(`Declare : ${formatFcfa(data.declaredAmount)}`);
+  pushLeft(`Ecart : ${formatFcfa(data.difference)}`);
+  if (data.byPayment.length) {
+    lines.push(lineSep(w));
+    pushCenter("PAR PAIEMENT");
+    for (const row of data.byPayment) {
+      pushLeft(`${paymentLabel(row.method)} : ${row.count} / ${formatFcfa(row.amount)}`);
+    }
+  }
+  if (data.notes) {
+    lines.push(lineSep(w));
+    pushLeft(`Note : ${data.notes}`);
+  }
+  lines.push(lineSep(w));
+  pushCenter("Fin de rapport Z");
+  lines.push("");
+  return lines.join("\n");
 }

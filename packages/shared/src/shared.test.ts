@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { toPrinterAscii } from "./accents.js";
 import { formatFcfa } from "./money.js";
 import { isValidTariffRef, normalizeTariffRef } from "./validation.js";
-import { renderTicketText } from "./ticket.js";
+import { renderTicketText, renderZReportText } from "./ticket.js";
 
 test("formatFcfa groups thousands with spaces", () => {
   assert.equal(formatFcfa(1000), "1 000 FCFA");
@@ -47,4 +47,62 @@ test("ticket layout stays within 58mm width", () => {
   assert.match(text, /Ref : 24H/);
   assert.match(text, /Ticket N : 202609-000125/);
   assert.doesNotMatch(text, /[éèàùôî]/);
+});
+
+test("payment settlement computes cash change and exact mobile money", async () => {
+  const { settlePayment, paymentLabel } = await import("./payment.js");
+  assert.deepEqual(settlePayment(1000, "CASH", undefined), {
+    paymentMethod: "CASH",
+    amountReceived: 1000,
+    changeFcfa: 0,
+  });
+  assert.equal(settlePayment(1000, "CASH", 2000).changeFcfa, 1000);
+  assert.equal(settlePayment(1000, "ORANGE_MONEY", 5000).amountReceived, 1000);
+  assert.equal(paymentLabel("MOOV_MONEY"), "Moov Money");
+  assert.throws(() => settlePayment(1000, "CASH", 500));
+});
+
+test("ticket and Z report stay within 80mm and include payment", () => {
+  const paid = renderTicketText(
+    {
+      parkingName: "Parking Central",
+      tariffRef: "24H",
+      tariffName: "Journalier",
+      durationValue: 24,
+      durationUnit: "HOURS",
+      priceFcfa: 1000,
+      ticketNumber: "202609-000125",
+      soldAt: "2026-09-10T17:32:00.000Z",
+      paymentMethod: "CASH",
+      amountReceived: 2000,
+      changeFcfa: 1000,
+      duplicate: true,
+      footer: "Merci",
+    },
+    80,
+  );
+  assert.match(paid, /DUPLICATA/);
+  assert.match(paid, /Paiement : Especes/);
+  assert.match(paid, /Monnaie : 1 000 FCFA/);
+  const z = renderZReportText(
+    {
+      parkingName: "Parking Central",
+      closedAt: "2026-09-10T18:00:00.000Z",
+      periodStart: "2026-09-10T00:00:00.000Z",
+      periodEnd: "2026-09-10T18:00:00.000Z",
+      ticketsCount: 3,
+      theoreticalAmount: 3000,
+      declaredAmount: 3000,
+      difference: 0,
+      cashierName: "Aminata",
+      closedByName: "Admin",
+      byPayment: [{ method: "CASH", count: 2, amount: 2000 }, { method: "ORANGE_MONEY", count: 1, amount: 1000 }],
+    },
+    80,
+  );
+  assert.match(z, /Z DE CAISSE/);
+  assert.match(z, /Orange Money/);
+  for (const line of z.split("\n")) {
+    assert.ok(line.length <= 48, `"${line}" is ${line.length}`);
+  }
 });

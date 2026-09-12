@@ -45,6 +45,15 @@ export function dashboard(filter: PeriodFilter, from?: string, to?: string) {
     byHour[hour].amount += Number(s.price_fcfa);
   }
 
+  const byPayment = new Map<string, { method: string; count: number; amount: number }>();
+  for (const s of sold) {
+    const method = String(s.payment_method || "CASH");
+    const cur = byPayment.get(method) || { method, count: 0, amount: 0 };
+    cur.count += 1;
+    cur.amount += Number(s.price_fcfa);
+    byPayment.set(method, cur);
+  }
+
   return {
     range,
     revenue,
@@ -54,6 +63,7 @@ export function dashboard(filter: PeriodFilter, from?: string, to?: string) {
     byReference: [...byRef.values()].sort((a, b) => b.amount - a.amount),
     byCashier: [...byCashier.values()].sort((a, b) => b.amount - a.amount),
     byHour,
+    byPayment: [...byPayment.values()].sort((a, b) => b.amount - a.amount),
     recent: sales.slice(-12).reverse(),
   };
 }

@@ -4,6 +4,7 @@ import { api } from "./api";
 import Admin from "./pages/Admin";
 import Cashier from "./pages/Cashier";
 import Login from "./pages/Login";
+import Setup from "./pages/Setup";
 
 export type User = {
   id: string;
@@ -16,18 +17,35 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [parkingName, setParkingName] = useState("Parking");
   const [ready, setReady] = useState(false);
+  const [setupNeeded, setSetupNeeded] = useState(false);
 
   useEffect(() => {
-    api<{ user: User; parkingName: string }>("/api/auth/me")
-      .then((d) => {
-        setUser(d.user);
-        setParkingName(d.parkingName);
-      })
-      .catch(() => setUser(null))
-      .finally(() => setReady(true));
+    Promise.all([
+      api<{ needed: boolean; parkingName: string }>("/api/setup/status").catch(() => ({ needed: false, parkingName: "Parking" })),
+      api<{ user: User; parkingName: string }>("/api/auth/me").catch(() => null),
+    ]).then(([setup, me]) => {
+      setSetupNeeded(setup.needed);
+      if (setup.parkingName) setParkingName(setup.parkingName);
+      if (me) {
+        setUser(me.user);
+        setParkingName(me.parkingName);
+      } else {
+        setUser(null);
+      }
+    }).finally(() => setReady(true));
   }, []);
 
   if (!ready) return <div className="login-wrap">Chargement…</div>;
+  if (setupNeeded) {
+    return (
+      <Setup
+        onDone={(name) => {
+          setSetupNeeded(false);
+          setParkingName(name);
+        }}
+      />
+    );
+  }
 
   return (
     <Routes>

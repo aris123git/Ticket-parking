@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import type { User } from "../App";
-import { api, durationLabel, formatFcfa, formatWhen } from "../api";
+import { api, durationLabel, formatFcfa, formatWhen, paymentLabel } from "../api";
 
 type Period = "today" | "yesterday" | "week" | "month";
 
@@ -31,6 +31,7 @@ export default function Admin({
         <NavLink to="/admin/caissiers">Caissiers</NavLink>
         <NavLink to="/admin/caisse">Cloture de caisse</NavLink>
         <NavLink to="/admin/imprimante">Imprimante</NavLink>
+        <NavLink to="/admin/sauvegarde">Sauvegarde</NavLink>
         <NavLink to="/admin/parking">Parking</NavLink>
         <NavLink to="/admin/journal">Journal</NavLink>
         <NavLink to="/admin/sync">Synchronisation</NavLink>
@@ -46,6 +47,7 @@ export default function Admin({
           <Route path="caissiers" element={<Users />} />
           <Route path="caisse" element={<Cash />} />
           <Route path="imprimante" element={<Printer />} />
+          <Route path="sauvegarde" element={<Backups />} />
           <Route path="parking" element={<Parking />} />
           <Route path="journal" element={<Audit />} />
           <Route path="sync" element={<Sync />} />
@@ -104,6 +106,19 @@ function Dashboard() {
           {!data.byReference.length ? <p className="muted">Aucune vente sur cette periode.</p> : null}
         </div>
       </div>
+      {data.byPayment?.length ? (
+        <div className="panel">
+          <h3>Repartition par paiement</h3>
+          <table>
+            <thead><tr><th>Mode</th><th>Tickets</th><th>Montant</th></tr></thead>
+            <tbody>
+              {data.byPayment.map((p: any) => (
+                <tr key={p.method}><td>{paymentLabel(p.method)}</td><td>{p.count}</td><td>{formatFcfa(p.amount)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <div className="panel">
         <h3>Performance des caissiers</h3>
         <table>
@@ -154,7 +169,7 @@ function Sales() {
       </div>
       <table>
         <thead>
-          <tr><th>Ticket</th><th>Heure</th><th>Ref</th><th>Prix</th><th>Caissier</th><th>Statut</th><th></th></tr>
+          <tr><th>Ticket</th><th>Heure</th><th>Ref</th><th>Prix</th><th>Paiement</th><th>Caissier</th><th>Statut</th><th></th></tr>
         </thead>
         <tbody>
           {sales.map((s) => (
@@ -163,6 +178,7 @@ function Sales() {
               <td>{formatWhen(s.sold_at)}</td>
               <td>{s.tariff_ref}</td>
               <td>{formatFcfa(s.price_fcfa)}</td>
+              <td>{paymentLabel(s.payment_method || "CASH")}</td>
               <td>{s.cashier_name}</td>
               <td className={`status-${s.status}`}>{s.status}</td>
               <td className="row-actions">
@@ -295,6 +311,7 @@ function Cash() {
   const [declared, setDeclared] = useState(0);
   const [notes, setNotes] = useState("");
   const [closures, setClosures] = useState<any[]>([]);
+  const [zPreview, setZPreview] = useState("");
   const load = () => {
     api(`/api/dashboard?period=${period}`).then(setDash);
     api<{ closures: any[] }>("/api/cash-closures").then((d) => setClosures(d.closures));
@@ -302,9 +319,17 @@ function Cash() {
   useEffect(() => { load(); }, [period]);
   async function closeCash(e: FormEvent) {
     e.preventDefault();
-    await api("/api/cash-closures", { method: "POST", body: JSON.stringify({ period, declaredAmount: declared, notes }) });
+    const result = await api<{ print?: { previewText?: string } }>("/api/cash-closures", {
+      method: "POST",
+      body: JSON.stringify({ period, declaredAmount: declared, notes }),
+    });
     setNotes("");
     load();
+    if (result.print?.previewText) setZPreview(result.print.previewText);
+  }
+  async function printZ(id: string) {
+    const d = await api<{ print: { previewText: string } }>(`/api/cash-closures/${id}/print`, { method: "POST" });
+    setZPreview(d.print.previewText);
   }
   const theoretical = dash?.revenue || 0;
   return (
@@ -322,7 +347,7 @@ function Cash() {
         <div className="field"><label>&nbsp;</label><button className="btn btn-primary">Cloturer</button></div>
       </form>
       <table>
-        <thead><tr><th>Date</th><th>Caissier</th><th>Theorique</th><th>Declare</th><th>Ecart</th><th>Tickets</th></tr></thead>
+        <thead><tr><th>Date</th><th>Caissier</th><th>Theorique</th><th>Declare</th><th>Ecart</th><th>Tickets</th><th></th></tr></thead>
         <tbody>
           {closures.map((c) => (
             <tr key={c.id}>
@@ -332,10 +357,12 @@ function Cash() {
               <td>{formatFcfa(c.declared_amount)}</td>
               <td>{formatFcfa(c.difference)}</td>
               <td>{c.tickets_count}</td>
+              <td><button className="btn btn-ghost" type="button" onClick={() => printZ(c.id)}>Imprimer le Z</button></td>
             </tr>
           ))}
         </tbody>
       </table>
+      {zPreview ? <pre className="preview" style={{ marginTop: 16 }}>{zPreview}</pre> : null}
     </div>
   );
 }
@@ -371,8 +398,10 @@ function Printer() {
             <option value="preview">Apercu (sans imprimante)</option>
             <option value="network">Reseau (port 9100)</option>
             <option value="file">Fichier / peripherique</option>
+            <option value="windows">Imprimante Windows (nom)</option>
           </select>
         </div>
+        <div className="field"><label>Nom imprimante Windows</label><input value={cfg.printerName || ""} onChange={(e) => setCfg({ ...cfg, printerName: e.target.value })} placeholder="Ex. XP-80C" /></div>
         <div className="field"><label>Hote</label><input value={cfg.host} onChange={(e) => setCfg({ ...cfg, host: e.target.value })} /></div>
         <div className="field"><label>Port</label><input type="number" value={cfg.port} onChange={(e) => setCfg({ ...cfg, port: Number(e.target.value) })} /></div>
         <div className="field"><label>Chemin fichier</label><input value={cfg.path} onChange={(e) => setCfg({ ...cfg, path: e.target.value })} /></div>
@@ -471,6 +500,83 @@ function Sync() {
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function Backups() {
+  const [backups, setBackups] = useState<{ filename: string; size: number; mtimeMs: number }[]>([]);
+  const [msg, setMsg] = useState("");
+  const load = () => api<{ backups: typeof backups }>("/api/backups").then((d) => setBackups(d.backups));
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    setMsg("");
+    await api("/api/backups", { method: "POST" });
+    setMsg("Sauvegarde ZIP creee.");
+    load();
+  }
+
+  async function restore(filename: string) {
+    if (!window.confirm(`Restaurer ${filename} ? Les ventes actuelles seront remplacees.`)) return;
+    setMsg("");
+    await api(`/api/backups/${filename}/restore`, { method: "POST" });
+    setMsg("Sauvegarde restauree. Rechargez si besoin.");
+    load();
+  }
+
+  async function upload(file: File) {
+    setMsg("");
+    const buf = await file.arrayBuffer();
+    const res = await fetch("/api/backups/restore-upload", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/zip" },
+      body: buf,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error || `Erreur ${res.status}`);
+    setMsg("Archive importee et restauree.");
+    load();
+  }
+
+  return (
+    <div>
+      <h2>Sauvegarde</h2>
+      <p className="muted">Copie ZIP de la base SQLite locale, comme en gestion commerciale. A ranger hors de cet ordinateur.</p>
+      <div className="panel row-actions" style={{ alignItems: "center" }}>
+        <button className="btn btn-primary" onClick={() => create().catch((e) => setMsg(e.message))}>Creer une sauvegarde</button>
+        <label className="btn btn-ghost">
+          Restaurer un fichier ZIP
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) upload(file).catch((err) => setMsg(err instanceof Error ? err.message : "Import impossible"));
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      {msg ? <div className="ok" style={{ marginBottom: 16 }}>{msg}</div> : null}
+      <table>
+        <thead><tr><th>Fichier</th><th>Taille</th><th>Date</th><th></th></tr></thead>
+        <tbody>
+          {backups.map((b) => (
+            <tr key={b.filename}>
+              <td>{b.filename}</td>
+              <td>{Math.max(1, Math.round(b.size / 1024))} Ko</td>
+              <td>{formatWhen(new Date(b.mtimeMs).toISOString())}</td>
+              <td className="row-actions">
+                <a className="btn btn-ghost" href={`/api/backups/${b.filename}`}>Telecharger</a>
+                <button className="btn btn-danger" onClick={() => restore(b.filename).catch((e) => setMsg(e.message))}>Restaurer</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import bcrypt from "bcryptjs";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -6,15 +7,18 @@ import express from "express";
 import { isValidTariffRef, normalizeTariffRef, nowIso, periodRange } from "@parkflow/shared";
 import { adminOnly, authRequired, clearAuthCookie, setAuthCookie, signUser, type AuthedRequest } from "./auth.js";
 import { writeAudit } from "./audit.js";
+import { backupFilePath, createBackup, listBackupFiles, restoreFromZip } from "./backup.js";
 import { getDb } from "./db.js";
-import { printTicket, printerConfig } from "./printer.js";
-import { changeSaleStatus, createSaleAndPrint } from "./sales.js";
+import { listWindowsPrinters, printTicket, printZReport, printerConfig, saleFromRow } from "./printer.js";
+import { changeSaleStatus, createSaleAndPrint, lastSale } from "./sales.js";
 import {
   allSettings,
+  completeSetup,
   getSetting,
   mapUser,
   regeneratePairingCode,
   setSetting,
+  setupNeeded,
   type AuthUser,
 } from "./seed.js";
 import { dashboard } from "./stats.js";
@@ -30,10 +34,40 @@ export function createApp() {
       credentials: true,
     }),
   );
+
+  app.post(
+    "/api/backups/restore-upload",
+    authRequired,
+    adminOnly,
+    express.raw({ type: () => true, limit: "80mb" }),
+    (req: AuthedRequest, res) => {
+      try {
+        const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+        restoreFromZip(buf, req.user!);
+        res.json({ ok: true });
+      } catch (err) {
+        sendErr(res, err);
+      }
+    },
+  );
+
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, role: "local-parking" });
+  });
+
+  app.get("/api/setup/status", (_req, res) => {
+    res.json({ needed: setupNeeded(), parkingName: getSetting("parking_name") || "Parking" });
+  });
+
+  app.post("/api/setup", (req, res) => {
+    try {
+      const result = completeSetup(req.body || {});
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      sendErr(res, err);
+    }
   });
 
   app.post("/api/auth/login", (req, res) => {
@@ -73,6 +107,7 @@ export function createApp() {
       user: req.user,
       parkingName: getSetting("parking_name"),
       sync: getSyncState(),
+      setupDone: !setupNeeded(),
     });
   });
 
@@ -105,7 +140,10 @@ export function createApp() {
   app.post("/api/sales", authRequired, async (req: AuthedRequest, res) => {
     try {
       const tariffId = String(req.body?.tariffId || "");
-      const result = await createSaleAndPrint(tariffId, req.user!);
+      const result = await createSaleAndPrint(tariffId, req.user!, {
+        method: req.body?.paymentMethod,
+        amountReceived: req.body?.amountReceived,
+      });
       res.status(201).json(result);
     } catch (err) {
       sendErr(res, err);
@@ -119,6 +157,24 @@ export function createApp() {
       .prepare("SELECT * FROM sales WHERE sold_at >= ? AND sold_at < ? ORDER BY sold_at DESC LIMIT 500")
       .all(range.start, range.end);
     res.json({ sales: rows, range });
+  });
+
+  app.get("/api/sales/last", authRequired, (_req, res) => {
+    res.json({ sale: lastSale() || null });
+  });
+
+  app.post("/api/sales/last/reprint", authRequired, async (req: AuthedRequest, res) => {
+    try {
+      const sale = lastSale();
+      if (!sale) {
+        res.status(404).json({ error: "Aucune vente a reimprimer" });
+        return;
+      }
+      const printed = await reprintSale(sale, req.user!);
+      res.json({ sale, print: printed });
+    } catch (err) {
+      sendErr(res, err);
+    }
   });
 
   app.get("/api/sales/:id", authRequired, (req: AuthedRequest, res) => {
@@ -136,23 +192,7 @@ export function createApp() {
       res.status(404).json({ error: "Vente introuvable" });
       return;
     }
-    const printed = await printTicket({
-      tariff_ref: String(sale.tariff_ref),
-      tariff_name: String(sale.tariff_name),
-      duration_value: Number(sale.duration_value),
-      duration_unit: sale.duration_unit as "HOURS" | "WEEKS",
-      price_fcfa: Number(sale.price_fcfa),
-      ticket_number: String(sale.ticket_number),
-      sold_at: String(sale.sold_at),
-      cashier_name: String(sale.cashier_name),
-    });
-    writeAudit({
-      user: req.user!,
-      operation: "SALE_REPRINT",
-      entityType: "sale",
-      entityId: String(sale.id),
-      newValue: { ticketNumber: sale.ticket_number, ok: printed.ok },
-    });
+    const printed = await reprintSale(sale, req.user!);
     res.json({ print: printed });
   });
 
@@ -202,7 +242,7 @@ export function createApp() {
     }
   });
 
-  app.post("/api/cash-closures", authRequired, adminOnly, (req: AuthedRequest, res) => {
+  app.post("/api/cash-closures", authRequired, adminOnly, async (req: AuthedRequest, res) => {
     try {
       const filter = String(req.body?.period || "today") as "today" | "yesterday" | "week" | "month" | "custom";
       const cashierId = req.body?.cashierId ? String(req.body.cashierId) : null;
@@ -249,6 +289,7 @@ export function createApp() {
           req.user!.displayName,
           nowIso(),
         );
+      const closure = getDb().prepare("SELECT * FROM cash_closures WHERE id = ?").get(id) as Record<string, unknown>;
       writeAudit({
         user: req.user!,
         operation: "CASH_CLOSE",
@@ -257,10 +298,26 @@ export function createApp() {
         newValue: { theoretical, declared, difference: declared - theoretical, tickets: rows.length, cashierName },
         reason: notes || null,
       });
-      res.status(201).json({ closure: getDb().prepare("SELECT * FROM cash_closures WHERE id = ?").get(id) });
+      const printed = await printZForRows(rows, closure);
+      res.status(201).json({ closure, print: printed });
     } catch (err) {
       sendErr(res, err);
     }
+  });
+
+  app.post("/api/cash-closures/:id/print", authRequired, adminOnly, async (req: AuthedRequest, res) => {
+    const closure = getDb().prepare("SELECT * FROM cash_closures WHERE id = ?").get(req.params.id) as
+      | Record<string, unknown>
+      | undefined;
+    if (!closure) {
+      res.status(404).json({ error: "Cloture introuvable" });
+      return;
+    }
+    const rows = getDb()
+      .prepare("SELECT * FROM sales WHERE status = 'SOLD' AND sold_at >= ? AND sold_at < ?")
+      .all(closure.period_start, closure.period_end) as Record<string, unknown>[];
+    const printed = await printZForRows(rows, closure);
+    res.json({ print: printed });
   });
 
   app.get("/api/cash-closures", authRequired, adminOnly, (_req, res) => {
@@ -287,6 +344,7 @@ export function createApp() {
       cloudUrl: s.cloud_url,
       timezone: s.timezone,
       printer: printerConfig(),
+      setupDone: s.setup_done === "1",
     });
   });
 
@@ -324,6 +382,7 @@ export function createApp() {
     if (b.host != null) setSetting("printer_host", String(b.host));
     if (b.port != null) setSetting("printer_port", String(b.port));
     if (b.path != null) setSetting("printer_path", String(b.path));
+    if (b.printerName != null) setSetting("printer_name", String(b.printerName));
     if (b.alignment) setSetting("printer_alignment", String(b.alignment));
     if (b.fontSize != null) setSetting("printer_font_size", String(b.fontSize));
     const flags = ["showAddress", "showPhone", "showHeader", "showFooter", "showCashier"] as const;
@@ -357,8 +416,47 @@ export function createApp() {
       ticket_number: "TEST-000000",
       sold_at: nowIso(),
       cashier_name: "Test",
+      payment_method: "CASH",
+      amount_received: 1000,
+      change_fcfa: 0,
     });
     res.json({ print: printed });
+  });
+
+  app.get("/api/printer/windows", authRequired, adminOnly, async (_req, res) => {
+    res.json({ printers: await listWindowsPrinters() });
+  });
+
+  app.get("/api/backups", authRequired, adminOnly, (_req, res) => {
+    res.json({ backups: listBackupFiles() });
+  });
+
+  app.post("/api/backups", authRequired, adminOnly, async (req: AuthedRequest, res) => {
+    try {
+      const backup = await createBackup(req.user!);
+      res.status(201).json({ backup: { filename: backup.filename, size: backup.size } });
+    } catch (err) {
+      sendErr(res, err);
+    }
+  });
+
+  app.get("/api/backups/:filename", authRequired, adminOnly, (req, res) => {
+    try {
+      const file = backupFilePath(req.params.filename);
+      res.download(file, req.params.filename);
+    } catch (err) {
+      sendErr(res, err);
+    }
+  });
+
+  app.post("/api/backups/:filename/restore", authRequired, adminOnly, (req: AuthedRequest, res) => {
+    try {
+      const file = backupFilePath(req.params.filename);
+      restoreFromZip(fs.readFileSync(file), req.user!);
+      res.json({ ok: true });
+    } catch (err) {
+      sendErr(res, err);
+    }
   });
 
   app.get("/api/sync", authRequired, adminOnly, (_req, res) => {
@@ -382,6 +480,42 @@ export function createApp() {
   });
 
   return app;
+}
+
+async function reprintSale(sale: Record<string, unknown>, user: AuthUser) {
+  const printed = await printTicket(saleFromRow(sale), { duplicate: true });
+  writeAudit({
+    user,
+    operation: "SALE_REPRINT",
+    entityType: "sale",
+    entityId: String(sale.id),
+    newValue: { ticketNumber: sale.ticket_number, ok: printed.ok },
+  });
+  return printed;
+}
+
+async function printZForRows(rows: Record<string, unknown>[], closure: Record<string, unknown>) {
+  const byPayment = new Map<string, { method: string; count: number; amount: number }>();
+  for (const s of rows) {
+    const method = String(s.payment_method || "CASH");
+    const cur = byPayment.get(method) || { method, count: 0, amount: 0 };
+    cur.count += 1;
+    cur.amount += Number(s.price_fcfa);
+    byPayment.set(method, cur);
+  }
+  return printZReport({
+    closedAt: String(closure.closed_at),
+    periodStart: String(closure.period_start),
+    periodEnd: String(closure.period_end),
+    ticketsCount: Number(closure.tickets_count),
+    theoreticalAmount: Number(closure.theoretical_amount),
+    declaredAmount: Number(closure.declared_amount),
+    difference: Number(closure.difference),
+    cashierName: String(closure.cashier_name || ""),
+    closedByName: String(closure.closed_by_name || ""),
+    notes: closure.notes ? String(closure.notes) : "",
+    byPayment: [...byPayment.values()],
+  });
 }
 
 function sendErr(res: express.Response, err: unknown) {

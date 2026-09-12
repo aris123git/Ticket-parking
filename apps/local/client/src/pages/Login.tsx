@@ -1,14 +1,21 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { User } from "../App";
 
 export default function Login({ onLogin }: { onLogin: (u: User, parkingName: string) => void }) {
   const nav = useNavigate();
-  const [username, setUsername] = useState("caissier");
-  const [password, setPassword] = useState("caissier123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
+
+  useEffect(() => {
+    api<{ needed: boolean }>("/api/setup/status")
+      .then((d) => setShowDemo(d.needed))
+      .catch(() => {});
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -38,17 +45,18 @@ export default function Login({ onLogin }: { onLogin: (u: User, parkingName: str
         {error ? <div className="error">{error}</div> : null}
         <div className="field">
           <label>Identifiant</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />
         </div>
         <div className="field">
           <label>Mot de passe</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         </div>
         <button className="btn btn-primary" disabled={busy}>{busy ? "Connexion…" : "Entrer"}</button>
-        <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
-          Caissier : caissier / caissier123<br />
-          Admin : admin / admin123
-        </p>
+        {showDemo ? (
+          <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
+            Premiere installation : configurez le parking avant d&apos;encaisser.
+          </p>
+        ) : null}
       </form>
     </div>
   );

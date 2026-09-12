@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { migrateLocalSchema } from "./migrate.js";
 
 function fromImportMeta(): string | null {
   try {
@@ -38,22 +39,30 @@ function schemaFile(): string {
   return found;
 }
 
-export const DATA_DIR = process.env.LOCAL_DATA_DIR
-  ? path.resolve(process.env.LOCAL_DATA_DIR)
-  : path.join(appRoot(), "data");
+export function getDataDir(): string {
+  if (process.env.LOCAL_DATA_DIR) return path.resolve(process.env.LOCAL_DATA_DIR);
+  return path.join(appRoot(), "data");
+}
 
-export const DB_PATH = path.join(DATA_DIR, "parking-local.db");
+export function getDbPath(): string {
+  return path.join(getDataDir(), "parking-local.db");
+}
+
+/** @deprecated use getDataDir() — kept for existing imports */
+export const DATA_DIR = getDataDir();
+export const DB_PATH = getDbPath();
 
 let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (db) return db;
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  db = new Database(DB_PATH);
+  fs.mkdirSync(getDataDir(), { recursive: true });
+  db = new Database(getDbPath());
   db.pragma("foreign_keys = ON");
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   db.exec(fs.readFileSync(schemaFile(), "utf8"));
+  migrateLocalSchema(db);
   return db;
 }
 
@@ -68,5 +77,6 @@ export function openMemoryDb(): Database.Database {
   db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
   db.exec(fs.readFileSync(schemaFile(), "utf8"));
+  migrateLocalSchema(db);
   return db;
 }

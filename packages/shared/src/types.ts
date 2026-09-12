@@ -1,3 +1,5 @@
+import type { PaymentMethod } from "./payment.js";
+
 export type Role = "CASHIER" | "ADMIN";
 export type SaleStatus = "SOLD" | "CANCELLED" | "REFUNDED";
 export type DurationUnit = "HOURS" | "WEEKS";
@@ -25,6 +27,9 @@ export type SaleSnapshot = {
   durationValue: number;
   durationUnit: DurationUnit;
   priceFcfa: number;
+  paymentMethod?: PaymentMethod;
+  amountReceived?: number;
+  changeFcfa?: number;
   cashierId: string;
   cashierName: string;
   status: SaleStatus;
